@@ -44,6 +44,8 @@ INSTALLED_APPS = [
 
 SITE_ID = 1
 
+SITE_SCHEME = 'https'
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -125,7 +127,12 @@ TIME_OUT = 15
 
 STATIC_URL = '/static/'
 
-LOGO = "https://www.cep.iitb.ac.in/assets/img/IIT-Logo.png"
+LOGO = "https://fossee.in/sites/all/themes/software_responsive_theme/img/logo.png"
 
-CERTIFICATES_PATH = f"{BASE_DIR}/certificates"
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+CERTIFICATES_PATH = os.path.join(MEDIA_ROOT, 'certificates')
 
+LOGIN_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/organizer/dashboard/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'

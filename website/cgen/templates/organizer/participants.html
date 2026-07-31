@@ -1,0 +1,70 @@
+{% extends "organizer/base.html" %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h2>Participants</h2>
+    <p class="text-muted mb-0">
+      Certificate: {{ certificate.description }}
+    </p>
+  </div>
+
+  <div>
+    <a href="{% url 'upload_csv_participants' certificate.id %}" class="btn btn-primary">
+      Upload CSV
+    </a>
+
+    <a href="{% url 'event_detail' certificate.event.id %}" class="btn btn-secondary">
+      Back to Event
+    </a>
+  </div>
+</div>
+
+{% if participant_rows %}
+  <div class="card shadow-sm">
+    <div class="card-body table-responsive">
+      <table class="table table-bordered align-middle">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Name</th>
+            <th>Details</th>
+            <th style="width: 160px;">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for row in participant_rows %}
+            <tr>
+              <td>{{ row.participant.email }}</td>
+              <td>{{ row.name }}</td>
+              <td>
+                {% for key, value in row.details.items %}
+                  <span class="badge bg-light text-dark border">
+                    {{ key }}: {{ value }}
+                  </span>
+                {% endfor %}
+              </td>
+              <td>
+                <a href="{% url 'edit_participant' row.participant.id %}" class="btn btn-sm btn-outline-primary">
+                  Edit
+                </a>
+
+                <a href="{% url 'delete_participant' row.participant.id %}" class="btn btn-sm btn-outline-danger">
+                  Delete
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% else %}
+  <div class="alert alert-info">
+    No participants uploaded yet.
+  </div>
+{% endif %}
+
+{% endblock %}

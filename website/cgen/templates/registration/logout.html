@@ -1,0 +1,23 @@
+{% extends "organizer/base.html" %}
+
+{% block content %}
+
+<div class="card shadow-sm p-4">
+  <h3>Logout</h3>
+
+  <p>Are you sure you want to logout?</p>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <button type="submit" class="btn btn-danger">
+      Yes, Logout
+    </button>
+
+    <a href="{% url 'organizer_dashboard' %}" class="btn btn-secondary">
+      Cancel
+    </a>
+  </form>
+</div>
+
+{% endblock %}

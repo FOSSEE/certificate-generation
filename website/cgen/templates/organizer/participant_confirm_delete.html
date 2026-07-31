@@ -1,0 +1,33 @@
+{% extends "organizer/base.html" %}
+
+{% block content %}
+
+<h2>Delete Participant</h2>
+
+<div class="card shadow-sm p-4">
+  <p>
+    Are you sure you want to delete this participant?
+  </p>
+
+  <p>
+    <strong>Email:</strong> {{ participant.email }}
+  </p>
+
+  <p class="text-danger">
+    This will also delete the generated certificate record for this participant.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <button type="submit" class="btn btn-danger">
+      Yes, Delete
+    </button>
+
+    <a href="{% url 'participants' certificate.id %}" class="btn btn-secondary">
+      Cancel
+    </a>
+  </form>
+</div>
+
+{% endblock %}

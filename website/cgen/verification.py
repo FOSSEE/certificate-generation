@@ -10,7 +10,7 @@ def verify(key):
         cm = CertificateManager.objects.get(serial_key_short=key)
         details['Authentic'] = True
         participant = cm.participant
-        info = eval(participant.details)
+        info = participant.details.copy()
         details['Event'] = participant.certificate.event.name
         description = participant.certificate.event.description
         details.update(info)

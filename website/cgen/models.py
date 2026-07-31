@@ -5,6 +5,7 @@ from django.conf import settings
 
 import os
 import hashlib
+import uuid
 
 types = (
             ('tex', 'LaTeX Template'),
@@ -12,13 +13,26 @@ types = (
         )
 
 # Create your models here.
-def get_file_dir(instance, filename):
-    if not  os.path.exists(settings.CERTIFICATES_PATH):
-        os.mkdir(settings.CERTIFICATES_PATH)
-    return os.sep.join(('certificates', str(instance.id), filename))
-
 def get_certificate_dir(instance, filename):
     return os.sep.join(('certificates', str(instance.participant.certificate.id), str(instance.id), filename))
+
+def get_file_dir(instance, filename):
+    os.makedirs(settings.CERTIFICATES_PATH, exist_ok=True)
+    ext = filename.split('.')[-1]
+    return os.path.join('certificates', 'templates', f'{uuid.uuid4()}.{ext}')
+
+
+def get_certificate_dir(instance, filename):
+    path = os.path.join(settings.CERTIFICATES_PATH,
+        str(instance.participant.certificate.id), str(instance.id)
+    )
+    os.makedirs(path, exist_ok=True)
+
+    return os.path.join('certificates',
+        str(instance.participant.certificate.id), str(instance.id),
+        filename
+    )
+
 
 class Event(models.Model):
     """
@@ -41,15 +55,31 @@ class Event(models.Model):
     # Default set to infinite value
 
 
-    # Published the event for the participants
+    # Publish the event for the participants
     is_published = models.BooleanField(default=False)
 
     # One who creates the event (organiser)
     creator = models.ForeignKey(User, null=True, on_delete=models.CASCADE)
 
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    published_on = models.DateTimeField(null=True, blank=True)
+
 
     def __str__(self):
         return self.name
+
+
+    def publish(self):
+        self.is_published = True
+        self.published_on = timezone.now()
+        self.save(update_fields=['is_published', 'published_on'])
+
+    def unpublish(self):
+        self.is_published = False
+        self.save(update_fields=['is_published'])
 
 
 class Certificate(models.Model):
@@ -76,8 +106,11 @@ class Certificate(models.Model):
             null=True, blank=True, default=None,
             help_text='Upload background for the certificate in png or jpg',
         )
-    variables = models.TextField()
+    variables = models.TextField(blank=True, default='')
 
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return 'Certificate for {0}'.format(self.event.name)
@@ -89,11 +122,19 @@ class Participant(models.Model):
 
     certificate = models.ForeignKey('Certificate', on_delete=models.CASCADE)
 
-    details = models.TextField()
+    details = models.JSONField(default=dict)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ['email', 'certificate']
-
+        constraints = [
+            models.UniqueConstraint(
+                fields=['email', 'certificate'],
+                name='unique_participant_per_certificate'
+            )
+        ]
 
     def __str__(self):
         return self.email
@@ -113,17 +154,19 @@ class CertificateManager(models.Model):
 
     has_downloaded = models.BooleanField(default=False)
 
-    certificate_creation_time = models.DateTimeField(default=timezone.now,
-                                                     null=True)
+    certificate_creation_time = models.DateTimeField(null=True, blank=True)
 
-    download_time  = models.DateTimeField(default=timezone.now)
+    download_time  = models.DateTimeField(null=True, blank=True)
 
-    serial_key_long = models.CharField(unique=True, max_length=80,
+    serial_key_long = models.CharField(unique=True, max_length=300,
                                        null=True, default=None)
 
-    serial_key_short = models.CharField(unique=True, max_length=80,
+    serial_key_short = models.CharField(unique=True, max_length=16,
                                         null=True, default=None)
 
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.participant.certificate.event} - {self.participant.email}"

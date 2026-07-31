@@ -1,0 +1,36 @@
+{% extends "organizer/base.html" %}
+
+{% block content %}
+
+<h2>{{ title|default:"Create Event" }}</h2>
+
+<form method="post" class="card shadow-sm p-4">
+  {% csrf_token %}
+
+  <div class="mb-3">
+    <label class="form-label">Event Name</label>
+    {{ form.name }}
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Description</label>
+    {{ form.description }}
+  </div>
+
+  <div class="row">
+    <div class="col-md-6 mb-3">
+      <label class="form-label">Start Date</label>
+      {{ form.start_date }}
+    </div>
+
+    <div class="col-md-6 mb-3">
+      <label class="form-label">End Date</label>
+      {{ form.end_date }}
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Save Event</button>
+  <a href="{% url 'organizer_dashboard' %}" class="btn btn-secondary">Cancel</a>
+</form>
+
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "organizer/base.html" %}
+
+{% block content %}
+
+<h2>Bulk Download Certificates</h2>
+
+<p class="text-muted">
+  Certificate: {{ certificate.description }}
+</p>
+
+<div class="card shadow-sm p-4">
+  <p>
+    This will generate certificates for all participants and download them as a ZIP file.
+  </p>
+
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-dark">
+      Generate ZIP
+    </button>
+
+    <a href="{% url 'event_detail' certificate.event.id %}" class="btn btn-secondary">
+      Cancel
+    </a>
+  </form>
+</div>
+
+{% endblock %}

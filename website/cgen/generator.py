@@ -3,16 +3,20 @@ import subprocess
 from string import Template
 import shutil
 import segno
+import ast
 
 from pathlib import Path
 from django.core.files import File
 from django.conf import settings
 from django.contrib.sites.models import Site
-
+from django.utils.text import slugify
+from django.urls import reverse
 from cgen.models import CertificateManager, Participant, Certificate
+
 
 def _get_domain():
     return Site.objects.get_current().domain
+
 
 def get_certificate(certificate_id, email):
     try:
@@ -21,6 +25,7 @@ def get_certificate(certificate_id, email):
         return (None, False)
     return  generate(certificate_id, email)
 
+
 def get_details(certificate_id, email):
     certificate = Certificate.objects.get(id=certificate_id)
     participant = Participant.objects.get(email=email, certificate=certificate)
@@ -28,21 +33,23 @@ def get_details(certificate_id, email):
     cm, created = CertificateManager.objects.get_or_create(
                     participant=participant)
     key = cm.generate_key()
-    #cm.set_serial_key_long(key)
     cm.set_serial_key_short(key)
     certificate_details['template'] = certificate.template.path
     certificate_details['template_type'] = certificate.template_type
-    info = eval(f'{participant.details}')
+    info = participant.details.copy()
     key = cm.get_serial_key_short()
     info['serial_key'] = key
     domain = _get_domain()
-    info['qr_code'] = f'{domain}/certificates/verify/{key}/'
+    scheme = getattr(settings, 'SITE_SCHEME', 'https')
+    info['qr_code'] = f"{scheme}://{domain}{reverse('verify_key', args=[key])}"
     certificate_details['info'] = info
-    path = f'{settings.BASE_DIR}/certificates/{certificate.id}'
+    path = os.path.join(settings.CERTIFICATES_PATH, str(certificate.id))
+    os.makedirs(path, exist_ok=True)
     certificate_details['path'] = path
-    if not  os.path.exists(f"path/{{Makefile}}"):
-        shutil.copy2(f'{settings.BASE_DIR}/Makefile', path)
-    certificate_details['file_name'] = f"{email.replace('.', '')}-{certificate.id}"
+    makefile_path = os.path.join(path, "Makefile")
+    if not os.path.exists(makefile_path):
+        shutil.copy2(os.path.join(settings.BASE_DIR, "Makefile"), makefile_path)
+    certificate_details['file_name'] = f"{slugify(email)}-{certificate.id}"
     return cm, certificate_details
 
 
@@ -98,18 +105,19 @@ def generate(certificate, email):
     except Exception as e:
         has_error = True
         msg = e
-    return [cm, True] 
+    return [cm, not has_error] 
             
 
 def _make_certificate_certificate(path, file_name, command='participant_cert'):
-    process = subprocess.Popen('timeout {0} make -C {1} {2} file_name={3}'.format(settings.TIME_OUT, path, command, file_name),
-                               stderr=subprocess.PIPE, shell=True)
-    err = process.communicate()[1]
-    return process.returncode, err
+    result = subprocess.run(
+        ['timeout', str(settings.TIME_OUT), 'make', '-C', path, command,
+        f'file_name={file_name}'],  capture_output=True
+    )
+    return result.returncode, result.stderr
 
 
 def _clean_certificate_certificate(path, file_name):
-    clean_process = subprocess.Popen('make -C {0} clean file_name={1}'.format(path, file_name),
-                                     shell=True)
-    clean_process.wait()
-
+    subprocess.run(
+        ['make', '-C', path, 'clean', f'file_name={file_name}'],
+        check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
