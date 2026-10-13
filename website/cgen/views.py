@@ -8,10 +8,10 @@ from django.core.exceptions import PermissionDenied
 from django.utils.text import slugify
 from django.contrib.auth import login, logout
 from cgen import generator, verification
+from cgen.csv_import import CSVImportError, parse_participants
 
 from cgen.models import Certificate, Participant, Event, CertificateManager
 from cgen.forms import EventForm, CertificateForm, OrganizerRegistrationForm
-import csv
 import zipfile
 from io import BytesIO
 import json
@@ -128,77 +128,56 @@ def upload_csv_participants(request, certificate_id):
     context = {'certificate': certificate}
 
     if request.method == 'POST':
-        if 'csv_file' not in request.FILES:
-            messages.warning(request, "Please upload a CSV file.")
+        csv_file = request.FILES.get('csv_file')
+        if csv_file is None:
+            messages.warning(request, "Please choose a CSV file to upload.")
             return render(request, 'organizer/upload_participants.html', context)
-        csv_file = request.FILES['csv_file']
-        is_csv_file, dialect = is_csv(csv_file)
-        if not is_csv_file:
-            messages.warning(request, "The file uploaded is not a CSV file.")
-            return render(request, 'organizer/upload_participants.html', context)
-        required_fields = ['name', 'email']
         try:
-            reader = csv.DictReader(
-                csv_file.read().decode('utf-8').splitlines(),
-                dialect=dialect)
-        except TypeError:
-            messages.warning(request, "Bad CSV file")
+            rows, problems = parse_participants(csv_file.read())
+        except CSVImportError as e:
+            messages.warning(request, str(e))
             return render(request, 'organizer/upload_participants.html', context)
-        stripped_fieldnames = [
-            field.strip().lower() for field in reader.fieldnames]
-        for field in required_fields:
-            if field not in stripped_fieldnames:
-                msg = "The CSV file does not contain the required headers"
-                messages.warning(request, msg)
-                return render(request, 'organizer/upload_participants.html', context)
-        reader.fieldnames = stripped_fieldnames
-        dict_keys = list(stripped_fieldnames)
-        dict_keys.remove('email')
-        _read_user_csv(request, reader, dict_keys, certificate)
-        context['message'] = 'Uploaded Successfully'
-        messages.success(request, "Participants uploaded successfully.")
+
+        added, updated, unchanged = _save_participants(rows, certificate, problems)
+        for problem in problems:
+            messages.info(request, problem)
+        if added or updated or unchanged:
+            messages.success(
+                request,
+                f"Upload complete: {added} added, {updated} updated, "
+                f"{unchanged} unchanged"
+                + (f", {len(problems)} row(s) need attention (see below)."
+                   if problems else "."))
+        else:
+            messages.warning(request, "No participants were found in the file.")
     return render(request, 'organizer/upload_participants.html', context)
 
 
-def _read_user_csv(request, reader, keys, certificate):
-    counter = 0
-    for row in reader:
-        counter += 1
-        email = row['email'].strip()
-        if not email:
-            messages.info(request, "{0} -- Missing Values".format(counter))
-            continue
-        d = {}
-        for k in keys:
-            d[k] = row.get(k, '').strip()
-        _add_to_participant(email, d, certificate)
-    if counter == 0:
-        messages.warning(request, "No rows in the CSV file")
-
-
-def _add_to_participant(email, details, certificate):
-    try:
-        p, created = Participant.objects.get_or_create(email=email,
-                                                       certificate=certificate)
-        p.details = details
-        p.save()
-    except Exception as e:
-        print(e)
-
-def is_csv(document):
-    ''' Check if document is csv with ',' as the delimiter'''
-    try:
-        try:
-            content = document.read(1024).decode('utf-8')
-        except AttributeError:
-            document.seek(0)
-            content = document.read(1024)
-        sniffer = csv.Sniffer()
-        dialect = sniffer.sniff(content, delimiters=',')
-        document.seek(0)
-    except (csv.Error, UnicodeDecodeError):
-        return False, None
-    return True, dialect 
+def _save_participants(rows, certificate, problems):
+    """Add or update participants. An email that is already on the list
+    gets its details replaced by the row from the file."""
+    added = updated = unchanged = 0
+    seen = {}
+    for email, details in rows:
+        if email in seen:
+            problems.append(
+                f"{email} appears more than once in the file; "
+                f"only the last row was kept.")
+        seen[email] = details
+    for email, details in seen.items():
+        participant = Participant.objects.filter(
+            certificate=certificate, email__iexact=email).first()
+        if participant is None:
+            Participant.objects.create(
+                certificate=certificate, email=email, details=details)
+            added += 1
+        elif participant.details != details:
+            participant.details = details
+            participant.save()
+            updated += 1
+        else:
+            unchanged += 1
+    return added, updated, unchanged
 
 
 @login_required

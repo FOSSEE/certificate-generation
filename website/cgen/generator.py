@@ -18,17 +18,23 @@ def _get_domain():
     return Site.objects.get_current().domain
 
 
+def _find_participant(certificate_id, email):
+    # Emails are matched ignoring case: "Ram@Example.com" in the CSV must
+    # match "ram@example.com" typed on the download page.
+    return Participant.objects.filter(
+        certificate=certificate_id, email__iexact=(email or '').strip()).first()
+
+
 def get_certificate(certificate_id, email):
-    try:
-        participant = Participant.objects.get(email=email, certificate=certificate_id)
-    except Participant.DoesNotExist:
+    if _find_participant(certificate_id, email) is None:
         return (None, False)
     return  generate(certificate_id, email)
 
 
 def get_details(certificate_id, email):
     certificate = Certificate.objects.get(id=certificate_id)
-    participant = Participant.objects.get(email=email, certificate=certificate)
+    participant = _find_participant(certificate_id, email)
+    email = participant.email
     certificate_details = {}
     cm, created = CertificateManager.objects.get_or_create(
                     participant=participant)
