@@ -69,36 +69,81 @@ def events(request):
 def certificate_download_all(request, certificate_id):
     certificate = get_object_or_404(Certificate, id=certificate_id)
     check_event_owner(request, certificate.event)
-    context = {'certificate': certificate}
-    participants = certificate.participant_set.all()
-    details = {}
-    for participant in participants:
-        info = eval(f'{participant.details}')
-        details[participant.email] = info['name']
-    context['details'] = details
+    rows = [(p.email, (p.details or {}).get('name', ''))
+            for p in certificate.participant_set.order_by('email', 'id')]
+    # One row per email: the download link gives all of that email's
+    # certificates.
+    seen, details = set(), []
+    for email, name in rows:
+        if email.lower() not in seen:
+            seen.add(email.lower())
+            details.append((email, name))
+    context = {'certificate': certificate, 'details': details}
     return render(request, 'download_all.html', context)
 
 
+def _pdf_names(participants, prefix):
+    """File names for several certificates in one ZIP, kept unique."""
+    names, used = [], set()
+    for number, participant in enumerate(participants, start=1):
+        label = slugify((participant.details or {}).get('name', ''),
+                        allow_unicode=True) or 'certificate'
+        name = f'{prefix}{label}.pdf'
+        if name in used:
+            name = f'{prefix}{label}-{number}.pdf'
+        used.add(name)
+        names.append(name)
+    return names
+
+
+def _zip_response(files, filename):
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as zip_file:
+        for path, arcname in files:
+            zip_file.write(path, arcname=arcname)
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type='application/zip')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
 def certificate_download(request, certificate_id, email=None):
-    context= {}
+    context = {}
     certificate = get_object_or_404(Certificate, id=certificate_id)
     context['certificate'] = certificate
-    ci = RequestContext(request)
     if request.method == 'POST':
-        email = request.POST.get('email').strip()
-    elif email is not None:
-        email = email
-    else:
+        email = request.POST.get('email', '').strip()
+    elif email is None:
         return render(request, 'download.html', context)
-    cm, s = generator.get_certificate(certificate_id, email)
-    if not s:
+
+    participants = generator.find_participants(certificate_id, email)
+    if not participants:
         context["notregistered"] = 1
         return render(request, 'download.html', context)
-    if s:
+
+    generated = []
+    for participant in participants:
+        cm, ok = generator.generate(participant)
+        if ok:
+            generated.append((participant, cm))
+    if len(generated) < len(participants):
+        # Do not hand out a partial set: the participant would not know
+        # one is missing.
+        context["generation_failed"] = 1
+        return render(request, 'download.html', context)
+
+    if len(generated) == 1:
+        cm = generated[0][1]
         filename = f"{slugify(email)}-certificate-{certificate_id}.pdf"
         response = HttpResponse(cm.certificate_file, content_type="application/pdf")
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
+
+    names = _pdf_names([p for p, _ in generated], prefix='')
+    return _zip_response(
+        [(cm.certificate_file.path, name)
+         for (_, cm), name in zip(generated, names)],
+        f"{slugify(email)}-certificates-{certificate_id}.zip")
 
 
 def verify(request, key=None):
@@ -138,14 +183,14 @@ def upload_csv_participants(request, certificate_id):
             messages.warning(request, str(e))
             return render(request, 'organizer/upload_participants.html', context)
 
-        added, updated, unchanged = _save_participants(rows, certificate, problems)
+        added, skipped = _save_participants(rows, certificate, problems)
         for problem in problems:
             messages.info(request, problem)
-        if added or updated or unchanged:
+        if added or skipped:
             messages.success(
                 request,
-                f"Upload complete: {added} added, {updated} updated, "
-                f"{unchanged} unchanged"
+                f"Upload complete: {added} added, {skipped} already on the "
+                f"list (skipped)"
                 + (f", {len(problems)} row(s) need attention (see below)."
                    if problems else "."))
         else:
@@ -154,30 +199,32 @@ def upload_csv_participants(request, certificate_id):
 
 
 def _save_participants(rows, certificate, problems):
-    """Add or update participants. An email that is already on the list
-    gets its details replaced by the row from the file."""
-    added = updated = unchanged = 0
-    seen = {}
+    """Add the rows from the file to the list.
+
+    The same email may appear on several rows (one certificate each). A row
+    that is exactly the same as one already on the list (same email and
+    same details) is skipped, so uploading a file again, or a file with
+    a few new rows added, does not create duplicates. To change someone's
+    details, use Edit on the participants page.
+    """
+    def key(email, details):
+        return email.lower(), json.dumps(details, sort_keys=True)
+
+    existing = {key(p.email, p.details) for p in
+                Participant.objects.filter(certificate=certificate)}
+    added = skipped = 0
+    new = []
     for email, details in rows:
-        if email in seen:
-            problems.append(
-                f"{email} appears more than once in the file; "
-                f"only the last row was kept.")
-        seen[email] = details
-    for email, details in seen.items():
-        participant = Participant.objects.filter(
-            certificate=certificate, email__iexact=email).first()
-        if participant is None:
-            Participant.objects.create(
-                certificate=certificate, email=email, details=details)
-            added += 1
-        elif participant.details != details:
-            participant.details = details
-            participant.save()
-            updated += 1
-        else:
-            unchanged += 1
-    return added, updated, unchanged
+        k = key(email, details)
+        if k in existing:
+            skipped += 1
+            continue
+        existing.add(k)
+        new.append(Participant(certificate=certificate, email=email,
+                               details=details))
+        added += 1
+    Participant.objects.bulk_create(new)
+    return added, skipped
 
 
 @login_required
@@ -293,8 +340,11 @@ def test_certificate_generation(request, certificate_id):
     participants = Participant.objects.filter(certificate=certificate)
 
     if request.method == 'POST':
-        email = request.POST.get('email', '').strip()
-        cm, success = generator.get_certificate(certificate.id, email)
+        participant_id = request.POST.get('participant', '')
+        participant = (participants.filter(id=participant_id).first()
+                       if participant_id.isdigit() else None)
+        cm, success = (generator.generate(participant) if participant
+                       else (None, False))
 
         if success:
             return HttpResponse(cm.certificate_file, content_type='application/pdf')
@@ -332,24 +382,24 @@ def bulk_download_certificates(request, certificate_id):
     certificate = get_object_or_404(Certificate, id=certificate_id)
     check_event_owner(request, certificate.event)
 
-    buffer = BytesIO()
-
-    with zipfile.ZipFile(buffer, 'w') as zip_file:
-        participants = Participant.objects.filter(certificate=certificate)
-
-        for participant in participants:
-            cm, success = generator.get_certificate(certificate.id, participant.email)
-            if success and cm.certificate_file:
-                zip_file.write(
-                    cm.certificate_file.path,
-                    arcname=f'{participant.email}.pdf'
-                )
-
-    buffer.seek(0)
-
-    response = HttpResponse(buffer, content_type='application/zip')
-    response['Content-Disposition'] = 'attachment; filename="certificates.zip"'
-    return response
+    participants = list(Participant.objects.filter(
+        certificate=certificate).order_by('email', 'id'))
+    files, counts = [], {}
+    for participant in participants:
+        counts[participant.email.lower()] = counts.get(participant.email.lower(), 0) + 1
+    numbers = {}
+    for participant in participants:
+        cm, success = generator.generate(participant)
+        if not (success and cm.certificate_file):
+            continue
+        email = participant.email.lower()
+        if counts[email] > 1:
+            numbers[email] = numbers.get(email, 0) + 1
+            arcname = f'{email}-{numbers[email]}.pdf'
+        else:
+            arcname = f'{email}.pdf'
+        files.append((cm.certificate_file.path, arcname))
+    return _zip_response(files, 'certificates.zip')
 
 
 @login_required
@@ -401,11 +451,12 @@ def edit_participant(request, participant_id):
         participant.details = parsed_details
         participant.save()
 
-        CertificateManager.objects.filter(participant=participant).delete()
-
+        # The certificate is rebuilt on every download, so the new details
+        # appear next time. Its serial key is kept, so copies already
+        # downloaded still verify.
         messages.success(
             request,
-            'Participant updated successfully. Certificate will be regenerated on next download.'
+            'Participant updated. The next download will show the new details.'
         )
 
         return redirect(

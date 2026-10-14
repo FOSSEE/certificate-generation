@@ -16,12 +16,12 @@
       <div class="mb-3">
         <label class="form-label">Select Participant</label>
 
-        <select name="email" class="form-select" required>
+        <select name="participant" class="form-select" required>
           <option value="">Choose participant</option>
 
           {% for participant in participants %}
-            <option value="{{ participant.email }}">
-              {{ participant.email }}
+            <option value="{{ participant.id }}">
+              {{ participant.email }}{% if participant.details.name %} — {{ participant.details.name }}{% endif %}
             </option>
           {% endfor %}
         </select>

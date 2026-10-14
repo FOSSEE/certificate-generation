@@ -114,17 +114,31 @@ class UploadViewTests(CgenTestCase):
         response = self.upload(
             b'\xef\xbb\xbfEmail,Name,Institute\r\n'
             b'a@x.com,Ram,"IIT Bombay, Mumbai"\r\nb@x.com,Rahul,KCCMS\r\n')
-        self.assertContains(response, '2 added')
+        self.assertContains(response, '2 added, 0 already on the list')
         p = Participant.objects.get(email='a@x.com')
         self.assertEqual(p.details, {'name': 'Ram', 'institute': 'IIT Bombay, Mumbai'})
 
-    def test_reupload_updates_existing_email_ignoring_case(self):
+    def test_same_email_on_several_rows_is_kept(self):
+        response = self.upload(b'email,name,course\n'
+                               b'a@x.com,Ram,Python\na@x.com,Ram,Scilab\n')
+        self.assertContains(response, '2 added')
+        self.assertEqual(Participant.objects.filter(email='a@x.com').count(), 2)
+
+    def test_reupload_skips_exact_repeats_ignoring_email_case(self):
         Participant.objects.create(certificate=self.certificate,
-                                   email='A@x.com', details={'name': 'Old'})
-        response = self.upload(b'email,name\na@X.com,New\n')
-        self.assertContains(response, '1 updated')
-        self.assertEqual(Participant.objects.count(), 1)
-        self.assertEqual(Participant.objects.get().details, {'name': 'New'})
+                                   email='A@x.com', details={'name': 'Ram'})
+        response = self.upload(b'email,name\na@X.com,Ram\na@x.com,Ram\n'
+                               b'b@x.com,New\n')
+        self.assertContains(response, '1 added, 2 already on the list')
+        self.assertEqual(Participant.objects.count(), 2)
+
+    def test_changed_details_are_added_not_overwritten(self):
+        Participant.objects.create(certificate=self.certificate,
+                                   email='a@x.com', details={'name': 'Old'})
+        self.upload(b'email,name\na@x.com,New\n')
+        self.assertEqual(
+            sorted(p.details['name'] for p in Participant.objects.all()),
+            ['New', 'Old'])
 
     def test_error_message_shown(self):
         response = self.upload(b'mail,name\na@x.com,Ram\n')

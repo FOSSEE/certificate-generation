@@ -48,33 +48,48 @@ def _get_domain():
     return Site.objects.get_current().domain
 
 
-def _find_participant(certificate_id, email):
-    # Emails are matched ignoring case: "Ram@Example.com" in the CSV must
-    # match "ram@example.com" typed on the download page.
-    return Participant.objects.filter(
-        certificate=certificate_id, email__iexact=(email or '').strip()).first()
+def find_participants(certificate_id, email):
+    """All participants of a certificate with this email, oldest first.
+
+    Emails are matched ignoring case: "Xyz@Example.com" in the CSV must
+    match "xyz@example.com" typed on the download page. One email can have
+    several rows (for example several courses).
+    """
+    return list(Participant.objects.filter(
+        certificate=certificate_id, email__iexact=(email or '').strip()
+    ).order_by('id'))
 
 
 def get_certificate(certificate_id, email):
-    if _find_participant(certificate_id, email) is None:
+    """Generate the certificate of the first participant with this email.
+    Kept for callers that only need one; see find_participants()."""
+    participants = find_participants(certificate_id, email)
+    if not participants:
         return (None, False)
-    return  generate(certificate_id, email)
+    return generate(participants[0])
 
 
-def get_details(certificate_id, email):
-    certificate = Certificate.objects.get(id=certificate_id)
-    participant = _find_participant(certificate_id, email)
+def _certificate_manager(participant):
+    # filter().first() rather than get_or_create(): two simultaneous first
+    # downloads could otherwise create two records and break later ones.
+    cm = CertificateManager.objects.filter(
+        participant=participant).order_by('id').first()
+    if cm is None:
+        cm = CertificateManager.objects.create(participant=participant)
+    cm.assign_serial_key()
+    return cm
+
+
+def get_details(participant):
+    certificate = participant.certificate
     email = participant.email
     certificate_details = {}
-    cm, created = CertificateManager.objects.get_or_create(
-                    participant=participant)
-    key = cm.generate_key()
-    cm.set_serial_key_short(key)
+    cm = _certificate_manager(participant)
     certificate_details['template'] = certificate.template.path
     certificate_details['template_type'] = certificate.template_type
     info = {key: escape_value(value, certificate.template_type)
             for key, value in participant.details.items()}
-    key = cm.get_serial_key_short()
+    key = cm.serial_key_short
     info['serial_key'] = key
     domain = _get_domain()
     scheme = getattr(settings, 'SITE_SCHEME', 'https')
@@ -83,12 +98,14 @@ def get_details(certificate_id, email):
     path = os.path.join(settings.CERTIFICATES_PATH, str(certificate.id))
     os.makedirs(path, exist_ok=True)
     certificate_details['path'] = path
-    certificate_details['file_name'] = f"{slugify(email)}-{certificate.id}"
+    certificate_details['file_name'] = (
+        f"{slugify(email)}-{certificate.id}-{participant.id}")
     return cm, certificate_details
 
 
-def generate(certificate, email):
-    cm, certificate_details = get_details(certificate, email)
+def generate(participant):
+    cm, certificate_details = get_details(participant)
+    certificate, email = participant.certificate_id, participant.email
     template = certificate_details['template']
     info = certificate_details['info']
     cpath = certificate_details['path']

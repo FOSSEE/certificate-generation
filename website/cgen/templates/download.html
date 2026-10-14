@@ -3,6 +3,12 @@
     {{ certificate.event.name }} Certificates
 {% endblock %}
 {% block content %}
+        {% if generation_failed %}
+        <div class="alert alert-danger" style="margin-right:200px; margin-left:200px" role="alert">
+          Your certificate could not be created right now. Please try again in a few minutes,
+          and contact the event organiser if it keeps failing.
+        </div>
+        {% endif %}
 
         <form style="margin-right:200px; margin-left:200px" action="{% url 'certificate_download' certificate.id %}" method="post">
             {% csrf_token %}

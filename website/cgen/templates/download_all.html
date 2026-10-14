@@ -12,7 +12,7 @@
             </tr>
         </thead>
         <tbody class="table-group-divider">
-        {% for email, name in details.items %}
+        {% for email, name in details %}
             <tr>
              <th scope="row">{{ forloop.counter }}</th>
              <td> {{ name | title }} </td>
