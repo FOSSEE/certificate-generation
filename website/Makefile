@@ -23,16 +23,16 @@ name = $(file_name)
 
 # certificate
 participant_cert: $(name).tex
-	pdflatex -shell-escape $(name).tex
+	pdflatex -interaction=nonstopmode -shell-escape $(name).tex
 
 participant_cert_svg: $(name).svg
 	rsvg-convert -f pdf -o $(name).pdf $(name).svg
 
 paper_cert:	$(name).tex
-	pdflatex -shell-escape $(name).tex
+	pdflatex -interaction=nonstopmode -shell-escape $(name).tex
 
 workshop_cert:	$(name).tex
-	pdflatex -shell-escape $(name).tex
+	pdflatex -interaction=nonstopmode -shell-escape $(name).tex
 
 
 clean:
