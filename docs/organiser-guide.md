@@ -229,7 +229,7 @@ Use Excel, Google Sheets or LibreOffice Calc. Put **one participant per row**, a
 - **Column headings: lowercase, no spaces.** Use `course_name`, not `Course Name`.
 - **Each email must be unique** for this certificate. Participants download their certificate by typing this email, so check it is correct.
 - **Do not add a column called `serial_key` or `qr_code`.** The system fills these in itself.
-- **Avoid these characters in names and other details:** `&` `%` `#` `_` `$` `{` `}` `~` `^` `\` `<`. They can stop the certificate from being made. For example, write *"Science and Technology"* instead of *"Science & Technology"*.
+- **Any characters are fine in names and other details**, including `&`, `%`, `#` and accented or Indian-language letters. (Make sure your design uses a font that has those letters.)
 - **Only include information you are happy for others to see.** Anyone who scans a certificate's QR code sees the details from that participant's row (see Section 12). Do not include phone numbers, addresses or other private information unless it is needed on the certificate.
 
 ### 7.2 Save it as a CSV file
@@ -399,7 +399,7 @@ People who already downloaded a certificate keep their old copy. Tell them to do
 | *"No rows in the CSV file"* | The file only has the heading row. | Add participant rows below the headings. |
 | A message like *"3 -- Missing Values"* | Row 3 of your participants has no email. | Add the email to that row and upload again. |
 | A `$` word appears on the certificate (for example "$grade") | The placeholder doesn't match any column heading. | Make the placeholder and the column heading exactly the same, lowercase with no spaces. |
-| *"Certificate generation failed or participant not found"* | Usually a special character in that person's details (`&`, `%`, `#`, `_`, `<` and so on), or a problem in the design file. | Remove special characters from their details (Section 8). If it fails for everyone, re-check the design against the tips in Section 5. |
+| *"Certificate generation failed or participant not found"* | Usually a problem in the design file. | If it fails for everyone, re-check the design against the tips in Section 5. If it fails for one person only, check their details in Section 8. |
 | The QR code is missing (SVG) | The QR code box was deleted or replaced in Inkscape. | Copy the QR box back from the starter template. |
 | Text shows in a different font | The font isn't available on the server. | Use a common font for placeholder text, or turn fixed text into a shape with **Object to Path**. |
 | The name runs off the page | The text isn't centred, or the font is too large for long names. | Centre-align the name and reduce the font size. Test with the longest name. |
@@ -417,7 +417,7 @@ If none of these help, contact: <!-- TODO: add support contact, e.g. certificate
 - [ ] Design file uses lowercase placeholders that match the CSV column headings
 - [ ] SVG design still has its QR code box / LaTeX design still has `\qrcode{$qr_code}`
 - [ ] **Variables** field lists every placeholder
-- [ ] CSV has `email` and `name` columns, no spaces after commas, no private data, no special characters
+- [ ] CSV has `email` and `name` columns, no spaces after commas, no private data
 - [ ] Participant count on the **View / Edit Participants** page is correct
 - [ ] Test certificate checked, including the longest name and a QR code scan
 - [ ] Event **published**

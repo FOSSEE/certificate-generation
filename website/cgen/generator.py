@@ -4,6 +4,8 @@ from string import Template
 import shutil
 import segno
 import ast
+import re
+from xml.sax.saxutils import escape as xml_escape
 
 from pathlib import Path
 from django.core.files import File
@@ -12,6 +14,30 @@ from django.contrib.sites.models import Site
 from django.utils.text import slugify
 from django.urls import reverse
 from cgen.models import CertificateManager, Participant, Certificate
+
+
+LATEX_SPECIAL = {
+    '\\': r'\textbackslash{}',
+    '&': r'\&', '%': r'\%', '$': r'\$', '#': r'\#', '_': r'\_',
+    '{': r'\{', '}': r'\}',
+    '~': r'\textasciitilde{}', '^': r'\textasciicircum{}',
+    '<': r'\textless{}', '>': r'\textgreater{}',
+}
+LATEX_SPECIAL_RE = re.compile('|'.join(re.escape(c) for c in LATEX_SPECIAL))
+
+
+def escape_value(value, template_type):
+    """Make a participant's value safe to paste into the template.
+
+    Without this, "Science & Technology" makes an SVG invalid and fails
+    generation, and in LaTeX & % # _ break the build (or run commands).
+    """
+    value = str(value)
+    if template_type == 'svg':
+        return xml_escape(value, {'"': '&quot;', "'": '&apos;'})
+    if template_type == 'tex':
+        return LATEX_SPECIAL_RE.sub(lambda m: LATEX_SPECIAL[m.group()], value)
+    return value
 
 
 def _get_domain():
@@ -42,7 +68,8 @@ def get_details(certificate_id, email):
     cm.set_serial_key_short(key)
     certificate_details['template'] = certificate.template.path
     certificate_details['template_type'] = certificate.template_type
-    info = participant.details.copy()
+    info = {key: escape_value(value, certificate.template_type)
+            for key, value in participant.details.items()}
     key = cm.get_serial_key_short()
     info['serial_key'] = key
     domain = _get_domain()

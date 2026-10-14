@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/3.0/ref/settings/
 """
 
 import os
-from local import *
+from .local import *
 
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
