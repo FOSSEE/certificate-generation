@@ -1,4 +1,4 @@
-from django.db import models, IntegrityError
+from django.db import models, IntegrityError, transaction
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.conf import settings
@@ -129,12 +129,10 @@ class Participant(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=['email', 'certificate'],
-                name='unique_participant_per_certificate'
-            )
-        ]
+        # The same email may appear more than once on a certificate (for
+        # example one person with several course grades); that person then
+        # downloads all their certificates together.
+        indexes = [models.Index(fields=['certificate', 'email'])]
 
     def __str__(self):
         return self.email
@@ -171,33 +169,43 @@ class CertificateManager(models.Model):
     def __str__(self):
         return f"{self.participant.certificate.event} - {self.participant.email}"
     
-    def generate_key(self, a = 0):
+    def assign_serial_key(self):
+        """Give this certificate its serial key, once.
+
+        The key is printed on the certificate and in its QR code, so it must
+        never change after it has been issued. The first certificate for an
+        email gets the same key as before (sha1 of email + certificate id);
+        further certificates for the same email get the next free key.
+        """
+        if self.serial_key_short:
+            return
         email = self.participant.email
-        certificate_id = self.participant.certificate.id
-        if a != 0:
-            s = f'{email}{certificate_id}{a}'
-        else:
-            s = f'{email}{certificate_id}'
-        to_hash = bytes(s, 'utf-8')
-        hashk = hashlib.sha1(to_hash).hexdigest()
-        self.set_serial_key_long(hashk, a)
-        return hashk
-
-    def set_serial_key_long(self, key, a):
-        try:
-            self.serial_key_long = key
-            self.save()
-        except IntegrityError:
-            a += 1
-            self.generate_key(a)
-
-    def set_serial_key_short(self, lkey, chars=4):
-        try:
-            self.serial_key_short = lkey[0:chars]
-            self.save()
-        except IntegrityError:
-            chars += 1
-            self.set_serial_key_short(lkey, chars)
+        certificate_id = self.participant.certificate_id
+        for attempt in range(5):
+            a = 0
+            while True:
+                source = f'{email}{certificate_id}' + (str(a) if a else '')
+                long_key = hashlib.sha1(source.encode('utf-8')).hexdigest()
+                if not CertificateManager.objects.filter(
+                        serial_key_long=long_key).exists():
+                    break
+                a += 1
+            for chars in range(4, 17):  # serial_key_short holds 16 chars
+                short_key = long_key[:chars]
+                if not CertificateManager.objects.filter(
+                        serial_key_short=short_key).exists():
+                    break
+            self.serial_key_long = long_key
+            self.serial_key_short = short_key
+            try:
+                with transaction.atomic():
+                    self.save(update_fields=['serial_key_long',
+                                             'serial_key_short'])
+                return
+            except IntegrityError:
+                # Another request took this key at the same moment; retry.
+                self.serial_key_long = self.serial_key_short = None
+        raise IntegrityError('Could not assign a unique serial key')
 
     def get_serial_key_short(self):
         return self.serial_key_short
