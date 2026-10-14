@@ -1,7 +1,9 @@
+import glob
+import logging
 import os
 import subprocess
+import uuid
 from string import Template
-import shutil
 import segno
 import ast
 import re
@@ -14,6 +16,8 @@ from django.contrib.sites.models import Site
 from django.utils.text import slugify
 from django.urls import reverse
 from cgen.models import CertificateManager, Participant, Certificate
+
+logger = logging.getLogger(__name__)
 
 
 LATEX_SPECIAL = {
@@ -79,9 +83,6 @@ def get_details(certificate_id, email):
     path = os.path.join(settings.CERTIFICATES_PATH, str(certificate.id))
     os.makedirs(path, exist_ok=True)
     certificate_details['path'] = path
-    makefile_path = os.path.join(path, "Makefile")
-    if not os.path.exists(makefile_path):
-        shutil.copy2(os.path.join(settings.BASE_DIR, "Makefile"), makefile_path)
     certificate_details['file_name'] = f"{slugify(email)}-{certificate.id}"
     return cm, certificate_details
 
@@ -91,66 +92,73 @@ def generate(certificate, email):
     template = certificate_details['template']
     info = certificate_details['info']
     cpath = certificate_details['path']
-    file_name = certificate_details['file_name']
     template_type = certificate_details['template_type']
-    msg = None
-    has_error = False
+
+    # Every request gets its own file names, so participants downloading at
+    # the same moment never read or delete each other's files (before this,
+    # all SVG certificates shared one "qrcode.png" and could get the wrong
+    # QR code). Files stay in the certificate folder so templates that use
+    # other files placed there keep working.
+    job = f"{certificate_details['file_name']}-{uuid.uuid4().hex[:8]}"
     try:
-        template_file = open(template, 'r')
-        content = Template(template_file.read())
-        template_file.close()
-        if template_type == 'tex':
-            content_tex = content.safe_substitute(info)
-            create_tex = open('{0}/{1}.tex'.format(cpath, file_name), 'w')
-            create_tex.write(content_tex)
-            create_tex.close()
-            return_value, msg = _make_certificate_certificate(cpath, file_name,
-                                    command='participant_cert')
-            if return_value == 0:
-                path = Path('{0}/{1}.pdf'.format(cpath, file_name))
-                with path.open(mode='rb') as f:
-                    cm.certificate_file = File(f, name=path.name)
-                    cm.save()
-            else:
-                has_error = True
+        # surrogateescape: a template saved in another encoding is passed
+        # through byte for byte instead of failing.
+        with open(template, 'r', encoding='utf-8',
+                  errors='surrogateescape') as template_file:
+            content = Template(template_file.read()).safe_substitute(info)
+
         if template_type == 'svg':
-            content_svg = content.safe_substitute(info)
-            create_svg = open('{0}/{1}.svg'.format(cpath, file_name), 'w')
-            create_svg.write(content_svg)
-            create_svg.close()
+            qr_name = f'{job}-qrcode.png'
+            segno.make(info['qr_code']).save(
+                os.path.join(cpath, qr_name), scale=10, light=None)
+            content = content.replace('qrcode.png', qr_name)
+            command = 'participant_cert_svg'
+        else:
+            command = 'participant_cert'
 
-            # create QR code
-            qrcode_text = info['qr_code']
-            img = segno.make(qrcode_text)
-            qrpath = os.path.join(cpath, 'qrcode.png')
-            img.save(qrpath, scale=10, light=None)
+        with open(os.path.join(cpath, f'{job}.{template_type}'), 'w',
+                  encoding='utf-8', errors='surrogateescape') as source:
+            source.write(content)
 
-            return_value, msg = _make_certificate_certificate(cpath, file_name,
-                                    command='participant_cert_svg')
-            if return_value == 0:
-                path = Path('{0}/{1}.pdf'.format(cpath, file_name))
-                with path.open(mode='rb') as f:
-                    cm.certificate_file = File(f, name=path.name)
-                    cm.save()
-            else:
-                has_error = True
-            _clean_certificate_certificate(cpath, file_name)
-    except Exception as e:
-        has_error = True
-        msg = e
-    return [cm, not has_error] 
-            
+        return_value, msg = _make_certificate_certificate(cpath, job, command)
+        if return_value != 0:
+            logger.error('Certificate %s for %s failed (exit %s): %s',
+                         certificate, email, return_value,
+                         msg.decode(errors='replace')[-2000:])
+            return [cm, False]
+
+        _store_pdf(cm, Path(cpath, f'{job}.pdf'),
+                   f"{certificate_details['file_name']}.pdf")
+    except Exception:
+        logger.exception('Certificate %s for %s failed', certificate, email)
+        return [cm, False]
+    finally:
+        for leftover in glob.glob(os.path.join(glob.escape(cpath), f'{job}*')):
+            try:
+                os.remove(leftover)
+            except OSError:
+                pass
+    return [cm, True]
+
+
+def _store_pdf(cm, pdf_path, name):
+    """Save the new PDF and remove the one from the previous download, so a
+    new copy is not left behind on disk every time someone downloads."""
+    old_name = cm.certificate_file.name if cm.certificate_file else None
+    with pdf_path.open(mode='rb') as f:
+        cm.certificate_file = File(f, name=name)
+        cm.save()
+    if old_name and old_name != cm.certificate_file.name:
+        cm.certificate_file.storage.delete(old_name)
+
 
 def _make_certificate_certificate(path, file_name, command='participant_cert'):
+    # Use the project's Makefile directly instead of a copy per certificate
+    # folder, so changes to it apply everywhere.
+    makefile = os.path.join(settings.BASE_DIR, 'Makefile')
     result = subprocess.run(
-        ['timeout', str(settings.TIME_OUT), 'make', '-C', path, command,
-        f'file_name={file_name}'],  capture_output=True
+        ['timeout', str(settings.TIME_OUT), 'make', '-f', makefile, '-C', path,
+         command, f'file_name={file_name}'],
+        capture_output=True, stdin=subprocess.DEVNULL,
     )
-    return result.returncode, result.stderr
-
-
-def _clean_certificate_certificate(path, file_name):
-    subprocess.run(
-        ['make', '-C', path, 'clean', f'file_name={file_name}'],
-        check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+    return result.returncode, result.stderr + result.stdout[-2000:]
