@@ -227,7 +227,8 @@ Use Excel, Google Sheets or LibreOffice Calc. Put **one participant per row**, a
 - The columns **`email`** and **`name`** are **required**.
 - Every other column heading becomes a placeholder you can use in your design (`institute` → `$institute`).
 - **Column headings: lowercase, no spaces.** Use `course_name`, not `Course Name`.
-- **Each email must be unique** for this certificate. Participants download their certificate by typing this email, so check it is correct.
+- **Participants download by typing this email**, so check it is correct. Capital letters don't matter.
+- **The same email can appear on several rows**, for example one person who completed two courses. That person gets all their certificates together in one ZIP file.
 - **Do not add a column called `serial_key` or `qr_code`.** The system fills these in itself.
 - **Any characters are fine in names and other details**, including `&`, `%`, `#` and accented or Indian-language letters. (Make sure your design uses a font that has those letters.)
 - **Only include information you are happy for others to see.** Anyone who scans a certificate's QR code sees the details from that participant's row (see Section 12). Do not include phone numbers, addresses or other private information unless it is needed on the certificate.
@@ -258,8 +259,9 @@ rahul@example.com,Rahul Verma,KCCMS,B+
 
 **Uploading again:** you can upload another CSV at any time, for example to add late registrations.
 
-- People whose email is **already in the list** get their details **replaced** with the new row.
-- People with a **new email** are **added**.
+- Rows that are **exactly the same** as someone already on the list (same email and same details) are **skipped**, so uploading the same file twice is safe.
+- Every other row is **added**, including a row with an email that is already on the list but different details.
+- To **correct** someone's details, don't upload them again; use **Edit** (Section 8). Otherwise they get a second certificate.
 - People who are **missing from the new file are not removed**. To remove someone, delete them (Section 8).
 
 ---
@@ -344,7 +346,7 @@ If you want to email certificates yourself or keep a copy:
 
 1. On the event page, click **Bulk Download ZIP**.
 2. Wait while the certificates are made. This can take a few minutes for a large list.
-3. A file called `certificates.zip` downloads. Inside, each certificate is named after the participant's email address, for example `priya@example.com.pdf`.
+3. A file called `certificates.zip` downloads. Inside, each certificate is named after the participant's email address, for example `priya@example.com.pdf`. If an email has several certificates, they are numbered: `priya@example.com-1.pdf`, `priya@example.com-2.pdf`.
 
 **Check the number of files.** If a certificate cannot be made for someone (for example, because of an unusual character in their name), it is **left out of the ZIP without a warning**. If the count is lower than your participant list, find the missing people and test them individually (Section 9).
 
@@ -356,7 +358,7 @@ If you want to email certificates yourself or keep a copy:
 
 1. The participant opens the link you shared.
 2. They enter the **email address from your participant list**.
-3. Their certificate downloads as a PDF.
+3. Their certificate downloads as a PDF. If their email has several certificates, they all download together as one ZIP file.
 
 If the email is not on the list, they see *"The requested certificate is unavailable for your email address."* Most often this is a spelling difference between what they typed and what is in your list. Check it in **View / Edit Participants**.
 
