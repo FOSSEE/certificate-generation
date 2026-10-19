@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
         <div class="modal" id="invalidModal" tabindex="-1">
-          <div class="modal-dialog">
+          <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
               <div class="modal-header">
                 <h5 class="modal-title">Invalid Serial Key</h5>
@@ -22,15 +22,17 @@
             </div>
           </div>
         </div>
-    <div style="margin-right:200px; margin-left:200px">
-          <p> Enter the alphanumeric characters below the QR code<br> OR <br>Enter the serial number you received while scanning the QR code on certificate</p>
-    <form style="margin-right:200px; margin-left:200px"action="{% url 'verify'  %}" method="post">
+    <div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+          <p class="text-center"> Enter the alphanumeric characters below the QR code<br> OR <br>Enter the serial number you received while scanning the QR code on certificate</p>
+    <form action="{% url 'verify'  %}" method="post">
         {% csrf_token %}
         <div class="input-group" >
-            <input class="form-control input-lg" placeholder="Enter the serial number" type="text" name="key">
-              <span class="input-group-btn"><button class="btn btn-lg btn-primary" type="submit">Verify</button></span>
+            <input class="form-control form-control-lg" placeholder="Serial number" type="text" name="key" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="Serial number">
+            <button class="btn btn-lg btn-primary" type="submit">Verify</button>
         </div>
     </form>
+    </div>
     </div>
 {% endblock %}
 

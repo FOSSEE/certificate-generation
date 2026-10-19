@@ -71,20 +71,21 @@
                   <!--<svg class="bd-placeholder-img card-img-top" width="100%" height="225" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Placeholder: Thumbnail" preserveAspectRatio="xMidYMid slice" focusable="false"><title>Placeholder</title><rect width="100%" height="100%" fill="#55595c"/><text x="50%" y="50%" fill="#eceeef" dy=".3em">{{ event.name }}</text></svg>
                 -->
                 <div class="card-body">
-                    <p class="card-text">{{ event.name }} <br>
-                    <table class="table">
+                    <h5 class="card-title">{{ event.name }}</h5>
+                    <table class="table table-sm mb-3">
                     <tr>
                         <td> Start Date: </td>
                         <td> {{event.start_date | date:"F d, Y" }} </td>
                     </tr>
+                    <tr>
                         <td> End Date: </td>
                         <td> {{event.end_date | date:"F d, Y" }} </td>
+                    </tr>
                     </table>
-                    </p>
                   {% for certificate in event.certificate_set.all %}
-                  <div class="d-flex justify-content-between align-items-center">
-                  <p>{{ certificate.description }}
-                    <div class="btn-group">
+                  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                  <p class="mb-0">{{ certificate.description }}</p>
+                    <div class="btn-group flex-shrink-0">
                       <a type="button" href="{%  url 'certificate_download' certificate.id %}" class="btn btn-sm btn-outline-secondary">Download</a>
                       <a type="button" href="{%  url 'verify' %}" class="btn btn-sm btn-outline-secondary">Verify</a>
                     </div>

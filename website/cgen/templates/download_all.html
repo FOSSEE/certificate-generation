@@ -3,7 +3,8 @@
     {{ certificate.event.name }} Certificates
 {% endblock %}
 {% block content %}
-        <table class="table table-bordered">
+        <div class="table-responsive">
+        <table class="table table-bordered align-middle">
         <thead>
             <tr>
             <th scope="col">#</th>
@@ -16,13 +17,14 @@
             <tr>
              <th scope="row">{{ forloop.counter }}</th>
              <td> {{ name | title }} </td>
-              <td><a class="btn btn-primary btn-lg" href="{%  url 'certificate_download' certificate.id email  %}" role="button"> Download </a></td>
+              <td><a class="btn btn-primary btn-sm" href="{%  url 'certificate_download' certificate.id email  %}" role="button"> Download </a></td>
             </tr>
         {% endfor %}
           </tbody>
 
 
         </table>
+        </div>
 
 
 {% endblock %}

@@ -4,26 +4,29 @@
     Certificate Verification
 {% endblock %}
 {% block content %}
-    <div style="margin-right:200px; margin-left:200px">
+    <div class="row justify-content-center">
+    <div class="col-12 col-md-10 col-lg-8">
     {% if has_details %}
-    <br>
     <div>
-        <caption> Following are the details</caption>
-        <table class="table table-primary table-bordered" >
+        <p class="mb-2"> Following are the details</p>
+        <div class="table-responsive">
+        <table class="table table-primary table-bordered mb-3" >
             <tbody>
                 {% for key, value in details.items %}
                 <tr>
-                    <td>{{ key | title  }}</td>
+                    <th scope="row" class="fw-semibold" style="width: 35%">{{ key | title  }}</th>
                     <td>{{ value }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        <div class="bg-white">
+        </div>
+        <div class="bg-white p-3 rounded">
         {{ description | safe }}
         </div>
     </div>
 
     {% endif %}
+    </div>
     </div>
 {% endblock %}
